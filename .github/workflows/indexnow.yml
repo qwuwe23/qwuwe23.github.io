@@ -1,0 +1,53 @@
+name: Submit GitHub Pages URLs to IndexNow
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "sitemap.xml"
+      - "robots.txt"
+      - "12ee6dbb421ebd29975f7fb87e370adab25b07e701917ed0.txt"
+      - ".github/workflows/indexnow.yml"
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for IndexNow key publication
+        env:
+          KEY: 12ee6dbb421ebd29975f7fb87e370adab25b07e701917ed0
+          KEY_URL: https://qwuwe23.github.io/12ee6dbb421ebd29975f7fb87e370adab25b07e701917ed0.txt
+        run: |
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error --max-time 20 "$KEY_URL" | grep -Fx "$KEY"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo "IndexNow key is not publicly available at $KEY_URL" >&2
+              exit 1
+            fi
+            sleep 15
+          done
+      - name: Submit published URLs
+        env:
+          KEY: 12ee6dbb421ebd29975f7fb87e370adab25b07e701917ed0
+          KEY_URL: https://qwuwe23.github.io/12ee6dbb421ebd29975f7fb87e370adab25b07e701917ed0.txt
+        run: |
+          payload=$(jq -n \
+            --arg host "qwuwe23.github.io" \
+            --arg key "$KEY" \
+            --arg keyLocation "$KEY_URL" \
+            --argjson urls '["https://qwuwe23.github.io/","https://qwuwe23.github.io/jichang/","https://qwuwe23.github.io/Airport/","https://qwuwe23.github.io/5Airport/","https://qwuwe23.github.io/airport-guides/","https://qwuwe23.github.io/airport-help/"]' \
+            '{host: $host, key: $key, keyLocation: $keyLocation, urlList: $urls}')
+          curl --fail-with-body --retry 3 --retry-all-errors --retry-delay 5 \
+            --max-time 30 --silent --show-error \
+            -X POST "https://api.indexnow.org/indexnow" \
+            -H "Content-Type: application/json; charset=utf-8" \
+            --data "$payload"
